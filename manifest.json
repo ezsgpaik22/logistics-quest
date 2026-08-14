@@ -1,0 +1,15 @@
+{
+  "name": "물류 퀘스트 알림",
+  "short_name": "물류퀘스트",
+  "description": "관리자가 등록한 퀘스트를 물류 직원이 실시간 알림으로 받고 진행상황을 보고하는 앱",
+  "start_url": "./index.html?role=staff",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f8fafc",
+  "theme_color": "#2563eb",
+  "orientation": "portrait",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}

@@ -1,0 +1,623 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>물류 퀘스트 알림</title>
+
+<!-- PWA / 홈화면 추가 지원 -->
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#2563eb">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="물류 퀘스트">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="icon" href="icon-192.png">
+
+<!-- ==========================================================
+     ⚙️ 설정: OneSignal 앱 ID와 Apps Script 웹앱 주소를 넣으세요.
+     배포_가이드.md 안내를 따라 값을 채운 뒤 다시 업로드하면 됩니다.
+     ========================================================== -->
+<script>
+  window.CONFIG = {
+    // Apps Script 배포 후 나오는 웹앱 URL (.../exec 로 끝나는 주소)
+    API_URL: 'https://script.google.com/macros/s/여기에_배포된_스크립트ID를_넣으세요/exec',
+    // OneSignal 대시보드 > Settings > Keys & IDs 에서 확인하는 App ID
+    ONESIGNAL_APP_ID: '여기에_OneSignal_App_ID를_넣으세요'
+  };
+</script>
+
+<script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
+<script>
+  window.OneSignalDeferred = window.OneSignalDeferred || [];
+  OneSignalDeferred.push(async function (OneSignal) {
+    try {
+      await OneSignal.init({ appId: window.CONFIG.ONESIGNAL_APP_ID });
+      window.__oneSignalReady = true;
+      refreshPushStatus();
+    } catch (e) {
+      console.warn('OneSignal 초기화 실패 (App ID 설정을 확인하세요):', e);
+    }
+  });
+</script>
+
+<style>
+  :root {
+    --blue: #2563eb;
+    --blue-dark: #1d4ed8;
+    --red: #dc2626;
+    --green: #16a34a;
+    --amber: #d97706;
+    --bg: #f8fafc;
+    --card: #ffffff;
+    --text: #0f172a;
+    --muted: #64748b;
+    --border: #e2e8f0;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    padding-bottom: 40px;
+  }
+  header {
+    background: var(--blue);
+    color: white;
+    padding: 14px 16px calc(14px + env(safe-area-inset-top, 0px));
+    padding-top: calc(14px + env(safe-area-inset-top, 0px));
+    position: sticky;
+    top: 0;
+    z-index: 10;
+  }
+  header h1 { font-size: 18px; margin: 0 0 10px; font-weight: 700; }
+  .tabs { display: flex; gap: 6px; }
+  .tab-btn {
+    flex: 1;
+    padding: 9px 0;
+    border: none;
+    border-radius: 8px;
+    background: rgba(255,255,255,0.15);
+    color: white;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .tab-btn.active { background: white; color: var(--blue); }
+
+  main { max-width: 620px; margin: 0 auto; padding: 14px; }
+  .view { display: none; }
+  .view.active { display: block; }
+
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 14px;
+    margin-bottom: 12px;
+  }
+  .card h2 { font-size: 15px; margin: 0 0 10px; color: var(--muted); font-weight: 700; }
+
+  label { display: block; font-size: 13px; font-weight: 600; margin: 10px 0 4px; color: var(--muted); }
+  input[type=text], textarea {
+    width: 100%;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px;
+    font-size: 15px;
+    font-family: inherit;
+    background: var(--bg);
+  }
+  textarea { min-height: 70px; resize: vertical; }
+  .checkbox-row { display: flex; align-items: center; gap: 8px; margin-top: 12px; }
+  .checkbox-row input { width: 18px; height: 18px; }
+
+  button.primary {
+    width: 100%;
+    margin-top: 14px;
+    padding: 12px;
+    border: none;
+    border-radius: 10px;
+    background: var(--blue);
+    color: white;
+    font-size: 15px;
+    font-weight: 700;
+    cursor: pointer;
+  }
+  button.primary:active { background: var(--blue-dark); }
+  button.primary:disabled { background: #94a3b8; }
+
+  .status-msg { font-size: 13px; margin-top: 8px; min-height: 16px; }
+  .status-msg.error { color: var(--red); }
+  .status-msg.ok { color: var(--green); }
+
+  .section-title { display: flex; align-items: center; justify-content: space-between; margin: 18px 0 8px; }
+  .section-title h3 { font-size: 14px; color: var(--muted); margin: 0; font-weight: 700; }
+  .badge-count { background: var(--border); color: var(--muted); border-radius: 999px; padding: 2px 9px; font-size: 12px; font-weight: 700; }
+
+  .quest-card { border-left: 4px solid var(--amber); }
+  .quest-card.status-대기 { border-left-color: var(--amber); }
+  .quest-card.status-진행중 { border-left-color: var(--blue); }
+  .quest-card.status-완료 { border-left-color: var(--green); opacity: 0.85; }
+
+  .quest-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
+  .quest-dept { font-weight: 700; font-size: 13px; color: var(--muted); }
+  .quest-urgent { background: var(--red); color: white; font-size: 11px; font-weight: 700; padding: 2px 7px; border-radius: 999px; margin-left: 6px; }
+  .quest-content { font-size: 15px; margin: 6px 0; line-height: 1.4; white-space: pre-wrap; }
+  .quest-meta { font-size: 12px; color: var(--muted); }
+  .quest-status-pill { font-size: 12px; font-weight: 700; padding: 3px 9px; border-radius: 999px; white-space: nowrap; }
+  .quest-status-pill.status-대기 { background: #fef3c7; color: #92400e; }
+  .quest-status-pill.status-진행중 { background: #dbeafe; color: #1e40af; }
+  .quest-status-pill.status-완료 { background: #dcfce7; color: #166534; }
+
+  .quest-actions { display: flex; gap: 8px; margin-top: 10px; }
+  .btn-sm {
+    flex: 1;
+    padding: 9px;
+    border: none;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+  }
+  .btn-claim { background: var(--blue); color: white; }
+  .btn-complete { background: var(--green); color: white; }
+  .btn-reopen { background: var(--border); color: var(--text); }
+
+  .report-list { margin-top: 10px; border-top: 1px dashed var(--border); padding-top: 8px; }
+  .report-item { font-size: 13px; margin-bottom: 6px; }
+  .report-item .who { font-weight: 700; }
+  .report-item .when { color: var(--muted); font-size: 11px; margin-left: 4px; }
+  .report-form { display: flex; gap: 6px; margin-top: 8px; }
+  .report-form input { flex: 1; }
+  .report-form button { padding: 0 14px; border: none; border-radius: 8px; background: var(--blue); color: white; font-weight: 700; }
+
+  .empty-msg { text-align: center; color: var(--muted); font-size: 14px; padding: 24px 0; }
+
+  .push-status { display: flex; align-items: center; justify-content: space-between; font-size: 13px; }
+  .push-status .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 6px; background: var(--red); }
+  .push-status .dot.on { background: var(--green); }
+  .push-status button { padding: 7px 12px; border: none; border-radius: 8px; background: var(--blue); color: white; font-weight: 700; font-size: 13px; }
+
+  .name-row { display: flex; gap: 8px; align-items: center; font-size: 13px; }
+  .name-row input { flex: 1; }
+  .name-row button { padding: 9px 12px; border: none; border-radius: 8px; background: var(--border); font-weight: 700; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>📦 물류 퀘스트 알림</h1>
+  <div class="tabs">
+    <button class="tab-btn" id="tabAdminBtn" onclick="switchRole('admin')">관리자 (PC)</button>
+    <button class="tab-btn" id="tabStaffBtn" onclick="switchRole('staff')">직원 (모바일)</button>
+  </div>
+</header>
+
+<main>
+
+  <!-- ===================== 관리자 화면 ===================== -->
+  <section class="view" id="view-admin">
+    <div class="card">
+      <h2>새 퀘스트 등록</h2>
+      <label>부서 / 장소</label>
+      <input type="text" id="questDept" list="deptList" placeholder="예: 수술실, 중앙공급실">
+      <datalist id="deptList"></datalist>
+
+      <label>요청 내용</label>
+      <textarea id="questContent" placeholder="예: 수술실에서 불량이 발생해서 부서 방문 요청"></textarea>
+
+      <label>요청자 (선택)</label>
+      <input type="text" id="questRequester" placeholder="예: 김관리">
+
+      <div class="checkbox-row">
+        <input type="checkbox" id="questUrgent">
+        <label style="margin:0" for="questUrgent">긴급 요청</label>
+      </div>
+
+      <button class="primary" id="createBtn" onclick="createQuest()">퀘스트 등록 &amp; 알림 발송</button>
+      <div class="status-msg" id="createMsg"></div>
+    </div>
+
+    <div class="section-title">
+      <h3>진행 중 / 대기 퀘스트</h3>
+      <span class="badge-count" id="adminActiveCount">0</span>
+    </div>
+    <div id="adminActiveList"></div>
+
+    <div class="section-title">
+      <h3>완료된 퀘스트</h3>
+      <span class="badge-count" id="adminDoneCount">0</span>
+    </div>
+    <div id="adminDoneList"></div>
+  </section>
+
+  <!-- ===================== 직원 화면 ===================== -->
+  <section class="view" id="view-staff">
+    <div class="card">
+      <h2>내 이름</h2>
+      <div class="name-row">
+        <input type="text" id="staffName" placeholder="이름을 입력하세요 (예: 박직원)">
+        <button onclick="saveStaffName()">저장</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>알림 상태</h2>
+      <div class="push-status">
+        <span><span class="dot" id="pushDot"></span><span id="pushStatusText">확인 중…</span></span>
+        <button onclick="enablePush()">알림 켜기</button>
+      </div>
+    </div>
+
+    <div class="section-title">
+      <h3>🆕 새 요청 (먼저 수락하는 사람이 처리)</h3>
+      <span class="badge-count" id="staffWaitingCount">0</span>
+    </div>
+    <div id="staffWaitingList"></div>
+
+    <div class="section-title">
+      <h3>🚚 내가 진행 중인 퀘스트</h3>
+      <span class="badge-count" id="staffMineCount">0</span>
+    </div>
+    <div id="staffMineList"></div>
+
+    <div class="section-title">
+      <h3>✅ 최근 완료</h3>
+      <span class="badge-count" id="staffDoneCount">0</span>
+    </div>
+    <div id="staffDoneList"></div>
+  </section>
+
+</main>
+
+<script>
+// ===================== 상태 =====================
+var state = {
+  role: 'admin',
+  quests: [],
+  reports: [],
+  lastSignature: '',
+  polling: false
+};
+
+function getParam(name) {
+  var m = new RegExp('[?&]' + name + '=([^&]+)').exec(window.location.search);
+  return m ? decodeURIComponent(m[1]) : null;
+}
+
+// ===================== 역할 전환 =====================
+function switchRole(role) {
+  state.role = role;
+  document.getElementById('tabAdminBtn').classList.toggle('active', role === 'admin');
+  document.getElementById('tabStaffBtn').classList.toggle('active', role === 'staff');
+  document.getElementById('view-admin').classList.toggle('active', role === 'admin');
+  document.getElementById('view-staff').classList.toggle('active', role === 'staff');
+  localStorage.setItem('quest_role', role);
+  render();
+}
+
+// ===================== API 호출 =====================
+function apiUrl(action, params) {
+  var url = window.CONFIG.API_URL + '?action=' + encodeURIComponent(action);
+  params = params || {};
+  for (var k in params) {
+    if (params[k] === undefined || params[k] === null) continue;
+    url += '&' + encodeURIComponent(k) + '=' + encodeURIComponent(params[k]);
+  }
+  return url;
+}
+
+async function callApi(action, params) {
+  var res = await fetch(apiUrl(action, params));
+  if (!res.ok) throw new Error('서버 응답 오류 (' + res.status + ')');
+  return res.json();
+}
+
+// ===================== 폴링 =====================
+async function fetchAndRender() {
+  try {
+    var data = await callApi('list');
+    if (!data.ok) throw new Error(data.error || '알 수 없는 오류');
+    state.quests = data.quests || [];
+    state.reports = data.reports || [];
+    render();
+  } catch (e) {
+    console.warn('목록 갱신 실패:', e);
+  }
+}
+
+function startPolling() {
+  if (state.polling) return;
+  state.polling = true;
+  fetchAndRender();
+  setInterval(function () {
+    // 사용자가 입력 중이면(포커스가 텍스트 입력에 있으면) 이번 주기는 건너뛰어
+    // 타이핑을 방해하지 않음
+    var active = document.activeElement;
+    var isTyping = active && (active.tagName === 'TEXTAREA' || (active.tagName === 'INPUT' && active.type === 'text'));
+    if (isTyping) return;
+    fetchAndRender();
+  }, 6000);
+}
+
+// ===================== 렌더링 =====================
+function reportsFor(questId) {
+  return state.reports.filter(function (r) { return r['퀘스트ID'] === questId; });
+}
+
+function fmtTime(iso) {
+  if (!iso) return '';
+  var d = new Date(iso);
+  if (isNaN(d.getTime())) return '';
+  var pad = function (n) { return (n < 10 ? '0' : '') + n; };
+  return (d.getMonth() + 1) + '/' + d.getDate() + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+}
+
+function escapeHtml(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+    return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+  });
+}
+
+function questCardHtml(q, opts) {
+  opts = opts || {};
+  var reports = reportsFor(q.ID);
+  var reportsHtml = reports.map(function (r) {
+    return '<div class="report-item"><span class="who">' + escapeHtml(r['작성자'] || '익명') + '</span>' +
+      '<span class="when">' + fmtTime(r['시각']) + '</span><div>' + escapeHtml(r['내용']) + '</div></div>';
+  }).join('');
+
+  var actionsHtml = '';
+  if (opts.mode === 'staff-waiting') {
+    actionsHtml = '<div class="quest-actions"><button class="btn-sm btn-claim" onclick="claimQuest(\'' + q.ID + '\')">제가 처리할게요</button></div>';
+  } else if (opts.mode === 'staff-mine') {
+    actionsHtml = '<div class="report-form">' +
+      '<input type="text" id="reportInput-' + q.ID + '" placeholder="진행상황을 입력하세요">' +
+      '<button onclick="submitReport(\'' + q.ID + '\')">보고</button></div>' +
+      '<div class="quest-actions"><button class="btn-sm btn-complete" onclick="completeQuest(\'' + q.ID + '\')">완료 처리</button></div>';
+  } else if (opts.mode === 'admin-active' && q['상태'] === '진행중') {
+    actionsHtml = '<div class="quest-actions"><button class="btn-sm btn-complete" onclick="completeQuest(\'' + q.ID + '\')">완료 처리</button></div>';
+  } else if (opts.mode === 'admin-done') {
+    actionsHtml = '<div class="quest-actions"><button class="btn-sm btn-reopen" onclick="reopenQuest(\'' + q.ID + '\')">되돌리기</button></div>';
+  }
+
+  return '' +
+    '<div class="card quest-card status-' + q['상태'] + '">' +
+      '<div class="quest-top">' +
+        '<div><span class="quest-dept">' + escapeHtml(q['부서'] || '부서 미지정') + '</span>' +
+        (q['긴급'] ? '<span class="quest-urgent">긴급</span>' : '') + '</div>' +
+        '<span class="quest-status-pill status-' + q['상태'] + '">' + q['상태'] + '</span>' +
+      '</div>' +
+      '<div class="quest-content">' + escapeHtml(q['내용']) + '</div>' +
+      '<div class="quest-meta">' +
+        (q['요청자'] ? '요청자: ' + escapeHtml(q['요청자']) + ' · ' : '') +
+        '등록 ' + fmtTime(q['생성일시']) +
+        (q['담당자'] ? ' · 담당: ' + escapeHtml(q['담당자']) : '') +
+      '</div>' +
+      (reportsHtml ? '<div class="report-list">' + reportsHtml + '</div>' : '') +
+      actionsHtml +
+    '</div>';
+}
+
+function updateDeptList() {
+  var depts = Array.from(new Set(state.quests.map(function (q) { return q['부서']; }).filter(Boolean)));
+  var dl = document.getElementById('deptList');
+  dl.innerHTML = depts.map(function (d) { return '<option value="' + escapeHtml(d) + '">'; }).join('');
+}
+
+function render() {
+  updateDeptList();
+
+  if (state.role === 'admin') {
+    var active = state.quests.filter(function (q) { return q['상태'] !== '완료'; });
+    var done = state.quests.filter(function (q) { return q['상태'] === '완료'; });
+
+    document.getElementById('adminActiveCount').textContent = active.length;
+    document.getElementById('adminDoneCount').textContent = done.length;
+
+    document.getElementById('adminActiveList').innerHTML = active.length
+      ? active.map(function (q) { return questCardHtml(q, { mode: 'admin-active' }); }).join('')
+      : '<div class="empty-msg">진행 중인 퀘스트가 없습니다.</div>';
+
+    document.getElementById('adminDoneList').innerHTML = done.length
+      ? done.slice(0, 30).map(function (q) { return questCardHtml(q, { mode: 'admin-done' }); }).join('')
+      : '<div class="empty-msg">완료된 퀘스트가 없습니다.</div>';
+  } else {
+    var myName = localStorage.getItem('quest_staff_name') || '';
+    var waiting = state.quests.filter(function (q) { return q['상태'] === '대기'; });
+    var mine = state.quests.filter(function (q) { return q['상태'] === '진행중' && (!myName || q['담당자'] === myName); });
+    var doneList = state.quests.filter(function (q) { return q['상태'] === '완료'; }).slice(0, 15);
+
+    document.getElementById('staffWaitingCount').textContent = waiting.length;
+    document.getElementById('staffMineCount').textContent = mine.length;
+    document.getElementById('staffDoneCount').textContent = doneList.length;
+
+    document.getElementById('staffWaitingList').innerHTML = waiting.length
+      ? waiting.map(function (q) { return questCardHtml(q, { mode: 'staff-waiting' }); }).join('')
+      : '<div class="empty-msg">대기 중인 퀘스트가 없습니다.</div>';
+
+    document.getElementById('staffMineList').innerHTML = mine.length
+      ? mine.map(function (q) { return questCardHtml(q, { mode: 'staff-mine' }); }).join('')
+      : '<div class="empty-msg">진행 중인 내 퀘스트가 없습니다.</div>';
+
+    document.getElementById('staffDoneList').innerHTML = doneList.length
+      ? doneList.map(function (q) { return questCardHtml(q, { mode: 'staff-done' }); }).join('')
+      : '<div class="empty-msg">완료 내역이 없습니다.</div>';
+  }
+}
+
+// ===================== 관리자 액션 =====================
+async function createQuest() {
+  var content = document.getElementById('questContent').value.trim();
+  var msgEl = document.getElementById('createMsg');
+  msgEl.className = 'status-msg';
+  msgEl.textContent = '';
+
+  if (!content) {
+    msgEl.className = 'status-msg error';
+    msgEl.textContent = '요청 내용을 입력해 주세요.';
+    return;
+  }
+
+  var btn = document.getElementById('createBtn');
+  btn.disabled = true;
+  try {
+    var res = await callApi('create', {
+      dept: document.getElementById('questDept').value.trim(),
+      content: content,
+      requester: document.getElementById('questRequester').value.trim(),
+      urgent: document.getElementById('questUrgent').checked ? '1' : '0'
+    });
+    if (!res.ok) throw new Error(res.error || '등록 실패');
+
+    document.getElementById('questContent').value = '';
+    document.getElementById('questUrgent').checked = false;
+    msgEl.className = 'status-msg ok';
+    msgEl.textContent = '퀘스트를 등록하고 알림을 보냈습니다.';
+    fetchAndRender();
+  } catch (e) {
+    msgEl.className = 'status-msg error';
+    msgEl.textContent = '등록 실패: ' + e.message;
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function completeQuest(id) {
+  try {
+    var res = await callApi('complete', { id: id });
+    if (!res.ok) throw new Error(res.error || '처리 실패');
+    fetchAndRender();
+  } catch (e) {
+    alert('완료 처리 실패: ' + e.message);
+  }
+}
+
+async function reopenQuest(id) {
+  try {
+    var res = await callApi('reopen', { id: id });
+    if (!res.ok) throw new Error(res.error || '처리 실패');
+    fetchAndRender();
+  } catch (e) {
+    alert('되돌리기 실패: ' + e.message);
+  }
+}
+
+// ===================== 직원 액션 =====================
+function loadStaffName() {
+  var name = localStorage.getItem('quest_staff_name') || '';
+  document.getElementById('staffName').value = name;
+}
+
+function saveStaffName() {
+  var name = document.getElementById('staffName').value.trim();
+  localStorage.setItem('quest_staff_name', name);
+  render();
+}
+
+function requireStaffName() {
+  var name = localStorage.getItem('quest_staff_name') || document.getElementById('staffName').value.trim();
+  if (!name) {
+    alert('먼저 이름을 입력하고 저장해 주세요.');
+    return null;
+  }
+  localStorage.setItem('quest_staff_name', name);
+  return name;
+}
+
+async function claimQuest(id) {
+  var name = requireStaffName();
+  if (!name) return;
+  try {
+    var res = await callApi('claim', { id: id, name: name });
+    if (!res.ok) {
+      if (res.reason === 'already_claimed') {
+        alert((res.claimedBy || '다른 직원') + '님이 이미 수락했습니다.');
+      } else {
+        alert('수락 실패: ' + (res.error || '알 수 없는 오류'));
+      }
+      fetchAndRender();
+      return;
+    }
+    fetchAndRender();
+  } catch (e) {
+    alert('수락 실패: ' + e.message);
+  }
+}
+
+async function submitReport(id) {
+  var name = requireStaffName();
+  if (!name) return;
+  var input = document.getElementById('reportInput-' + id);
+  var text = input.value.trim();
+  if (!text) return;
+  try {
+    var res = await callApi('report', { id: id, name: name, text: text });
+    if (!res.ok) throw new Error(res.error || '보고 실패');
+    input.value = '';
+    fetchAndRender();
+  } catch (e) {
+    alert('진행상황 보고 실패: ' + e.message);
+  }
+}
+
+async function completeQuestStaff(id) {
+  return completeQuest(id);
+}
+
+// ===================== 푸시 알림 상태 =====================
+async function refreshPushStatus() {
+  var dot = document.getElementById('pushDot');
+  var text = document.getElementById('pushStatusText');
+  if (!window.OneSignal) {
+    text.textContent = 'OneSignal 로드 대기 중…';
+    return;
+  }
+  try {
+    var permission = await OneSignal.Notifications.permission;
+    var optedIn = OneSignal.User && OneSignal.User.PushSubscription ? OneSignal.User.PushSubscription.optedIn : false;
+    if (permission && optedIn) {
+      dot.classList.add('on');
+      text.textContent = '알림 켜짐';
+    } else {
+      dot.classList.remove('on');
+      text.textContent = '알림 꺼짐 (아래 버튼을 눌러 켜주세요)';
+    }
+  } catch (e) {
+    text.textContent = '알림 상태 확인 실패';
+  }
+}
+
+async function enablePush() {
+  if (!window.OneSignal) {
+    alert('알림 기능을 아직 불러오는 중입니다. 잠시 후 다시 시도해 주세요.');
+    return;
+  }
+  try {
+    await OneSignal.Notifications.requestPermission();
+    await refreshPushStatus();
+  } catch (e) {
+    alert('알림 권한 요청 실패: ' + e.message);
+  }
+}
+
+// ===================== 초기화 =====================
+window.addEventListener('DOMContentLoaded', function () {
+  var roleFromUrl = getParam('role');
+  var savedRole = localStorage.getItem('quest_role');
+  switchRole(roleFromUrl || savedRole || 'admin');
+  loadStaffName();
+  startPolling();
+  setInterval(refreshPushStatus, 8000);
+
+  if ('serviceWorker' in navigator) {
+    // OneSignal SDK가 자체적으로 OneSignalSDKWorker.js를 등록합니다.
+  }
+});
+</script>
+
+</body>
+</html>
