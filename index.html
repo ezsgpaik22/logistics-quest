@@ -22,9 +22,9 @@
 <script>
   window.CONFIG = {
     // Apps Script 배포 후 나오는 웹앱 URL (.../exec 로 끝나는 주소)
-    API_URL: 'https://script.google.com/macros/s/AKfycbyQXhzIx3qY_0xaSZWoar1Uwxc2h1ykt6WzG6RRXwnceEwAJQjqTqI9LG1boU9buz8Qzw/exec',
+    API_URL: 'https://script.google.com/macros/s/여기에_배포된_스크립트ID를_넣으세요/exec',
     // OneSignal 대시보드 > Settings > Keys & IDs 에서 확인하는 App ID
-    ONESIGNAL_APP_ID: '836b9578-d906-458e-a513-5b8daa5f15c3'
+    ONESIGNAL_APP_ID: '여기에_OneSignal_App_ID를_넣으세요'
   };
 </script>
 
@@ -33,7 +33,16 @@
   window.OneSignalDeferred = window.OneSignalDeferred || [];
   OneSignalDeferred.push(async function (OneSignal) {
     try {
-      await OneSignal.init({ appId: window.CONFIG.ONESIGNAL_APP_ID });
+      // GitHub Pages 같은 "프로젝트 사이트"는 도메인 루트가 아니라 하위 경로
+      // (예: https://아이디.github.io/저장소이름/)에서 서비스 워커가 서빙됨.
+      // OneSignal SDK는 기본적으로 도메인 루트에서 OneSignalSDKWorker.js를 찾으므로,
+      // 이 페이지가 실제로 위치한 하위 경로를 scope로 명시해줘야 404 없이 등록됨.
+      var swScope = new URL('.', window.location.href).pathname;
+      await OneSignal.init({
+        appId: window.CONFIG.ONESIGNAL_APP_ID,
+        serviceWorkerPath: 'OneSignalSDKWorker.js',
+        serviceWorkerParam: { scope: swScope }
+      });
       window.__oneSignalReady = true;
       refreshPushStatus();
     } catch (e) {
