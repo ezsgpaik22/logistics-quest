@@ -35,13 +35,15 @@
     try {
       // GitHub Pages 같은 "프로젝트 사이트"는 도메인 루트가 아니라 하위 경로
       // (예: https://아이디.github.io/저장소이름/)에서 서비스 워커가 서빙됨.
-      // OneSignal SDK는 기본적으로 도메인 루트에서 OneSignalSDKWorker.js를 찾으므로,
-      // 이 페이지가 실제로 위치한 하위 경로를 scope로 명시해줘야 404 없이 등록됨.
-      var swScope = new URL('.', window.location.href).pathname;
+      // OneSignal SDK는 serviceWorkerPath를 "도메인 루트 기준 상대경로"로 해석해서
+      // 파일을 가져오므로(현재 페이지 기준이 아님), 하위 폴더까지 포함한 경로를
+      // 직접 만들어줘야 404 없이 등록됨.
+      var dirPath = window.location.pathname.replace(/[^/]*$/, ''); // 예: '/logistics-quest/' 또는 '/'
+      var swPath = dirPath.replace(/^\//, '') + 'OneSignalSDKWorker.js'; // 예: 'logistics-quest/OneSignalSDKWorker.js'
       await OneSignal.init({
         appId: window.CONFIG.ONESIGNAL_APP_ID,
-        serviceWorkerPath: 'OneSignalSDKWorker.js',
-        serviceWorkerParam: { scope: swScope }
+        serviceWorkerPath: swPath,
+        serviceWorkerParam: { scope: dirPath }
       });
       window.__oneSignalReady = true;
       refreshPushStatus();
